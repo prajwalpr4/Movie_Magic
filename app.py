@@ -6,14 +6,14 @@ from boto3.dynamodb.conditions import Attr
 from decimal import Decimal
 import uuid
 import os
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, NoCredentialsError
 
 app = Flask(__name__)
 
 # Security & Config
 app.secret_key = 'your_static_secret_key_here'
 AWS_REGION = os.environ.get('AWS_REGION', 'ap-south-1')
-SNS_TOPIC_ARN = 'arn:aws:sns:ap-south-1:977099000730:MovieTicketNotifications'
+SNS_TOPIC_ARN = 'arn:aws:sns:us-east-1:796973510347:Movie'
 
 # AWS Services
 dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
@@ -73,7 +73,7 @@ def signup():
             })
             flash('Account created! Please login.', 'success')
             return redirect(url_for('login'))
-        except ClientError:
+        except (ClientError, NoCredentialsError):
             flash('Error creating account', 'danger')
     return render_template('signup.html')
 
@@ -100,7 +100,7 @@ def login():
                     }
                     return redirect(url_for('dashboard'))
             flash('Invalid credentials', 'danger')
-        except ClientError:
+        except (ClientError, NoCredentialsError):
             flash('Login error', 'danger')
     return render_template('login.html')
 
@@ -117,7 +117,7 @@ def dashboard():
     try:
         response = movies_table.scan()
         movies = replace_decimals(response.get('Items', [])) 
-    except ClientError as e:
+    except (ClientError, NoCredentialsError) as e:
         movies = []
     return render_template('dashboard.html', movies=movies)
 
@@ -318,7 +318,7 @@ def edit_movie(movie_id):
             }
         )
         flash('Movie updated successfully!', 'success')
-    except ClientError as e:
+    except (ClientError, NoCredentialsError) as e:
         print(e)
         flash('Error updating movie', 'danger')
     return redirect(url_for('admin_dashboard'))
