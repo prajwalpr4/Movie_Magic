@@ -137,9 +137,16 @@
             {% if movies %}
                 {% for movie in movies %}
                 <div class="history-card">
-                    <div class="history-left">
-                        <h4 style="color: var(--primary); margin-bottom: 5px; font-size: 1.2rem;">{{ movie.title }}</h4>
-                        <p style="font-size: 0.9rem; color: #ccc;">{{ movie.theater }} | {{ movie.language }}</p>
+                    <div style="display: flex; gap: 15px; align-items: center;">
+                        {% if movie.image.startswith('http') %}
+                            <img src="{{ movie.image }}" alt="{{ movie.title }}" style="width: 50px; height: 75px; object-fit: cover; border-radius: 5px;">
+                        {% else %}
+                            <img src="{{ url_for('static', filename='images/' + movie.image) }}" alt="{{ movie.title }}" style="width: 50px; height: 75px; object-fit: cover; border-radius: 5px;">
+                        {% endif %}
+                        <div class="history-left">
+                            <h4 style="color: var(--primary); margin-bottom: 5px; font-size: 1.2rem;">{{ movie.title }}</h4>
+                            <p style="font-size: 0.9rem; color: #ccc;">{{ movie.theater }} | {{ movie.language }}</p>
+                        </div>
                     </div>
                     <div class="history-right" style="gap: 10px;">
                         <div class="tag">₹{{ movie.price }}</div>

@@ -15,6 +15,40 @@ app.secret_key = 'your_static_secret_key_here'
 AWS_REGION = os.environ.get('AWS_REGION', 'ap-south-1')
 SNS_TOPIC_ARN = 'arn:aws:sns:us-east-1:796973510347:Movie'
 
+# In-Memory DB Fallback
+local_users = {}
+local_movies = [
+    {
+        'movie_id': 'm1',
+        'title': 'Avatar',
+        'genre': 'Action, Adventure, Fantasy',
+        'language': 'English',
+        'duration': '162 min',
+        'image': 'avatar.jpg',
+        'trailer': 'https://www.youtube.com/embed/5PSNL1qE6VY',
+        'price': 250,
+        'rating': 7.9,
+        'theater': 'IMAX Orion Mall',
+        'address': 'Rajajinagar, Bangalore',
+        'description': 'A paraplegic Marine dispatched to the moon Pandora on a unique mission becomes torn between following his orders and protecting the world he feels is his home.'
+    },
+    {
+        'movie_id': 'm2',
+        'title': 'Oppenheimer',
+        'genre': 'Biography, Drama, History',
+        'language': 'English',
+        'duration': '180 min',
+        'image': 'oppenheimer.jpg',
+        'trailer': 'https://www.youtube.com/embed/uYPbbksJxIg',
+        'price': 300,
+        'rating': 4.8,
+        'theater': 'PVR Nexus',
+        'address': 'Koramangala, Bangalore',
+        'description': 'The story of American scientist, J. Robert Oppenheimer, and his role in the development of the atomic bomb.'
+    }
+]
+local_bookings = []
+
 # AWS Services
 dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
 sns = boto3.client('sns', region_name=AWS_REGION)
@@ -74,7 +108,15 @@ def signup():
             flash('Account created! Please login.', 'success')
             return redirect(url_for('login'))
         except (ClientError, NoCredentialsError):
-            flash('Error creating account', 'danger')
+            local_users[email] = {
+                'id': str(uuid.uuid4()),
+                'name': name,
+                'email': email,
+                'password': password,
+                'theme': 'dark'
+            }
+            flash('Account created locally (AWS unavailable)! Please login.', 'success')
+            return redirect(url_for('login'))
     return render_template('signup.html')
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -101,7 +143,16 @@ def login():
                     return redirect(url_for('dashboard'))
             flash('Invalid credentials', 'danger')
         except (ClientError, NoCredentialsError):
-            flash('Login error', 'danger')
+            if email in local_users:
+                user = local_users[email]
+                if check_password_hash(user['password'], password):
+                    session['user'] = {
+                        'name': user['name'],
+                        'email': user['email'],
+                        'theme': user.get('theme', 'dark')
+                    }
+                    return redirect(url_for('dashboard'))
+            flash('Invalid credentials', 'danger')
     return render_template('login.html')
 
 @app.route('/logout')
@@ -118,7 +169,7 @@ def dashboard():
         response = movies_table.scan()
         movies = replace_decimals(response.get('Items', [])) 
     except (ClientError, NoCredentialsError) as e:
-        movies = []
+        movies = local_movies
     return render_template('dashboard.html', movies=movies)
 
 @app.route('/movie/<movie_id>')
@@ -131,7 +182,10 @@ def movie_details(movie_id):
             flash('Movie not found', 'danger')
             return redirect(url_for('dashboard'))
         return render_template('movie_details.html', movie=movie)
-    except ClientError:
+    except (ClientError, NoCredentialsError) as e:
+        movie = next((m for m in local_movies if m['movie_id'] == movie_id), None)
+        if movie:
+            return render_template('movie_details.html', movie=movie)
         flash('Error loading movie', 'danger')
         return redirect(url_for('dashboard'))
 
@@ -174,7 +228,11 @@ def confirm_booking():
             'booking_time': datetime.now().isoformat()
         }
         
-        bookings_table.put_item(Item=booking_item)
+        try:
+            bookings_table.put_item(Item=booking_item)
+        except (ClientError, NoCredentialsError) as e:
+            local_bookings.append(booking_item)
+            
         send_email(booking_item)
         return render_template('confirmation.html', booking=booking_item)
     except Exception as e:
@@ -202,8 +260,13 @@ def profile():
 
         response = bookings_table.scan(FilterExpression=Attr('booked_by').eq(user_email))
         user_bookings = replace_decimals(response.get('Items', []))
-    except ClientError:
-        pass
+    except (ClientError, NoCredentialsError) as e:
+        if user_email in local_users:
+            user_info = local_users[user_email]
+        else:
+            user_info = session['user']
+        user_bookings = [b for b in local_bookings if b.get('booked_by') == user_email]
+        
     return render_template('profile.html', user=user_info, bookings=user_bookings)
 
 @app.route('/update_profile', methods=['POST'])
@@ -240,7 +303,7 @@ def update_profile():
         session.modified = True
         
         flash('Profile updated successfully!', 'success')
-    except ClientError:
+    except (ClientError, NoCredentialsError) as e:
         flash('Error updating profile', 'danger')
     return redirect(url_for('profile'))
 
@@ -253,8 +316,8 @@ def admin_dashboard():
     try:
         response = movies_table.scan()
         movies = replace_decimals(response.get('Items', []))
-    except ClientError:
-        movies = []
+    except (ClientError, NoCredentialsError) as e:
+        movies = local_movies
     return render_template('admin.html', movies=movies)
 
 @app.route('/add_movie', methods=['POST'])
@@ -329,7 +392,7 @@ def delete_movie(movie_id):
     try:
         movies_table.delete_item(Key={'movie_id': movie_id})
         flash('Movie deleted', 'success')
-    except ClientError:
+    except (ClientError, NoCredentialsError) as e:
         flash('Error deleting movie', 'danger')
     return redirect(url_for('admin_dashboard'))
 
