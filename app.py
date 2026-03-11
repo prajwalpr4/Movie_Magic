@@ -13,7 +13,7 @@ app = Flask(__name__)
 # Security & Config
 app.secret_key = 'your_static_secret_key_here'
 AWS_REGION = os.environ.get('AWS_REGION', 'ap-south-1')
-SNS_TOPIC_ARN = 'arn:aws:sns:us-east-1:796973510347:Movie'
+SNS_TOPIC_ARN = 'arn:aws:sns:us-east-1:881490100674:MovieMagic'
 
 # In-Memory DB Fallback
 local_users = {}
